@@ -1,0 +1,337 @@
+{
+  "protocolo": "TCC_SISTEMA_V2",
+  "modelo": "eventos5_v1_p10_20261015",
+  "sha256": "dd5a7cef19f07b1cdf6c4bd5b62aa321f81d18283c6094dd074c227178dc1cdb",
+  "labels": [
+    "sem_evento_alvo",
+    "liquidificador_ligando",
+    "liquidificador_desligando",
+    "microondas_ligando",
+    "microondas_desligando"
+  ],
+  "features_aquisicao": 106,
+  "features_previsao": 14,
+  "indices_previsao_base_zero": [
+    1,
+    2,
+    3,
+    5,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65
+  ],
+  "nomes_features": [
+    "VRMS",
+    "IRMS",
+    "P",
+    "Q",
+    "VTHD50",
+    "ITHD50",
+    "VFFT_H1",
+    "VFFT_H2",
+    "VFFT_H3",
+    "VFFT_H4",
+    "VFFT_H5",
+    "VFFT_H6",
+    "VFFT_H7",
+    "VFFT_H8",
+    "VFFT_H9",
+    "VFFT_H10",
+    "VFFT_H11",
+    "VFFT_H12",
+    "VFFT_H13",
+    "VFFT_H14",
+    "VFFT_H15",
+    "VFFT_H16",
+    "VFFT_H17",
+    "VFFT_H18",
+    "VFFT_H19",
+    "VFFT_H20",
+    "VFFT_H21",
+    "VFFT_H22",
+    "VFFT_H23",
+    "VFFT_H24",
+    "VFFT_H25",
+    "VFFT_H26",
+    "VFFT_H27",
+    "VFFT_H28",
+    "VFFT_H29",
+    "VFFT_H30",
+    "VFFT_H31",
+    "VFFT_H32",
+    "VFFT_H33",
+    "VFFT_H34",
+    "VFFT_H35",
+    "VFFT_H36",
+    "VFFT_H37",
+    "VFFT_H38",
+    "VFFT_H39",
+    "VFFT_H40",
+    "VFFT_H41",
+    "VFFT_H42",
+    "VFFT_H43",
+    "VFFT_H44",
+    "VFFT_H45",
+    "VFFT_H46",
+    "VFFT_H47",
+    "VFFT_H48",
+    "VFFT_H49",
+    "VFFT_H50",
+    "IFFT_H1",
+    "IFFT_H2",
+    "IFFT_H3",
+    "IFFT_H4",
+    "IFFT_H5",
+    "IFFT_H6",
+    "IFFT_H7",
+    "IFFT_H8",
+    "IFFT_H9",
+    "IFFT_H10",
+    "IFFT_H11",
+    "IFFT_H12",
+    "IFFT_H13",
+    "IFFT_H14",
+    "IFFT_H15",
+    "IFFT_H16",
+    "IFFT_H17",
+    "IFFT_H18",
+    "IFFT_H19",
+    "IFFT_H20",
+    "IFFT_H21",
+    "IFFT_H22",
+    "IFFT_H23",
+    "IFFT_H24",
+    "IFFT_H25",
+    "IFFT_H26",
+    "IFFT_H27",
+    "IFFT_H28",
+    "IFFT_H29",
+    "IFFT_H30",
+    "IFFT_H31",
+    "IFFT_H32",
+    "IFFT_H33",
+    "IFFT_H34",
+    "IFFT_H35",
+    "IFFT_H36",
+    "IFFT_H37",
+    "IFFT_H38",
+    "IFFT_H39",
+    "IFFT_H40",
+    "IFFT_H41",
+    "IFFT_H42",
+    "IFFT_H43",
+    "IFFT_H44",
+    "IFFT_H45",
+    "IFFT_H46",
+    "IFFT_H47",
+    "IFFT_H48",
+    "IFFT_H49",
+    "IFFT_H50"
+  ],
+  "context_ms": 5000,
+  "sampling_interval_ms": 200,
+  "serial_baud": 115200,
+  "cenarios": [
+    {
+      "id": 1,
+      "slug": "ambos_parados",
+      "title": "Ambos parados",
+      "before": [
+        0,
+        0
+      ],
+      "after": [
+        0,
+        0
+      ],
+      "neural_class": 0,
+      "action": "MANTENHA OS APARELHOS COMO ESTÃO"
+    },
+    {
+      "id": 2,
+      "slug": "ambos_funcionando",
+      "title": "Ambos funcionando",
+      "before": [
+        1,
+        1
+      ],
+      "after": [
+        1,
+        1
+      ],
+      "neural_class": 0,
+      "action": "MANTENHA OS APARELHOS COMO ESTÃO"
+    },
+    {
+      "id": 3,
+      "slug": "somente_liquidificador",
+      "title": "Somente liquidificador",
+      "before": [
+        1,
+        0
+      ],
+      "after": [
+        1,
+        0
+      ],
+      "neural_class": 0,
+      "action": "MANTENHA OS APARELHOS COMO ESTÃO"
+    },
+    {
+      "id": 4,
+      "slug": "somente_microondas",
+      "title": "Somente micro-ondas",
+      "before": [
+        0,
+        1
+      ],
+      "after": [
+        0,
+        1
+      ],
+      "neural_class": 0,
+      "action": "MANTENHA OS APARELHOS COMO ESTÃO"
+    },
+    {
+      "id": 5,
+      "slug": "liquidificador_ligando_microondas_parado",
+      "title": "Liquidificador ligando; micro-ondas parado",
+      "before": [
+        0,
+        0
+      ],
+      "after": [
+        1,
+        0
+      ],
+      "neural_class": 1,
+      "action": "LIQUIDIFICADOR LIGANDO"
+    },
+    {
+      "id": 6,
+      "slug": "liquidificador_desligando_microondas_parado",
+      "title": "Liquidificador desligando; micro-ondas parado",
+      "before": [
+        1,
+        0
+      ],
+      "after": [
+        0,
+        0
+      ],
+      "neural_class": 2,
+      "action": "LIQUIDIFICADOR DESLIGANDO"
+    },
+    {
+      "id": 7,
+      "slug": "microondas_ligando_liquidificador_parado",
+      "title": "Micro-ondas ligando; liquidificador parado",
+      "before": [
+        0,
+        0
+      ],
+      "after": [
+        0,
+        1
+      ],
+      "neural_class": 3,
+      "action": "MICRO-ONDAS LIGANDO"
+    },
+    {
+      "id": 8,
+      "slug": "microondas_desligando_liquidificador_parado",
+      "title": "Micro-ondas desligando; liquidificador parado",
+      "before": [
+        0,
+        1
+      ],
+      "after": [
+        0,
+        0
+      ],
+      "neural_class": 4,
+      "action": "MICRO-ONDAS DESLIGANDO"
+    },
+    {
+      "id": 9,
+      "slug": "liquidificador_ligando_microondas_funcionando",
+      "title": "Liquidificador ligando; micro-ondas funcionando",
+      "before": [
+        0,
+        1
+      ],
+      "after": [
+        1,
+        1
+      ],
+      "neural_class": 1,
+      "action": "LIQUIDIFICADOR LIGANDO"
+    },
+    {
+      "id": 10,
+      "slug": "liquidificador_desligando_microondas_funcionando",
+      "title": "Liquidificador desligando; micro-ondas funcionando",
+      "before": [
+        1,
+        1
+      ],
+      "after": [
+        0,
+        1
+      ],
+      "neural_class": 2,
+      "action": "LIQUIDIFICADOR DESLIGANDO"
+    },
+    {
+      "id": 11,
+      "slug": "microondas_ligando_liquidificador_funcionando",
+      "title": "Micro-ondas ligando; liquidificador funcionando",
+      "before": [
+        1,
+        0
+      ],
+      "after": [
+        1,
+        1
+      ],
+      "neural_class": 3,
+      "action": "MICRO-ONDAS LIGANDO"
+    },
+    {
+      "id": 12,
+      "slug": "microondas_desligando_liquidificador_funcionando",
+      "title": "Micro-ondas desligando; liquidificador funcionando",
+      "before": [
+        1,
+        1
+      ],
+      "after": [
+        1,
+        0
+      ],
+      "neural_class": 4,
+      "action": "MICRO-ONDAS DESLIGANDO"
+    }
+  ],
+  "ordem_sugerida": [
+    1,
+    5,
+    3,
+    11,
+    2,
+    10,
+    4,
+    8,
+    7,
+    9,
+    12,
+    6
+  ]
+}

@@ -1,0 +1,27 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.vscode/
+.idea/
+build/
+dist/
+*.bin
+*.elf
+*.map
+*.pdb
+*.exe
+*.log*
+*.tmp
+.campanha.lock
+capturas/
+dados/
+campanha.json
+detalhes/
+.DS_Store
+Thumbs.db
+
+# Copias locais anteriores e ZIP de importacao
+backups_modelo/
+ei_import_*/
+firmware/modelo_edge_impulse.zip

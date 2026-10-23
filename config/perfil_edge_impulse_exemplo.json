@@ -1,0 +1,8 @@
+{
+  "nome": "meu_modelo_eventos5",
+  "sha256_modelo": "SUBSTITUIR_PELO_HASH_DO_MODELO_TFLITE_INFORMADO_PELO_IMPORTADOR",
+  "janelas": 25,
+  "intervalo_janela_ms": 200,
+  "entrada": "features_sem_normalizacao_externa",
+  "indices_features": [1, 2, 3, 5, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65]
+}

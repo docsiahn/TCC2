@@ -1,0 +1,51 @@
+{
+  "data": "2026-10-23",
+  "revisao": "mqtt_mosquitto_importacao_edge_impulse",
+  "estado": "preparada_na_pasta_autorizada; instalacao_e_ensaio_fisico_pendentes",
+  "teste_python": {
+    "versao_executada": "3.8.1",
+    "total": 41,
+    "aprovados": 39,
+    "ignorados": 2,
+    "motivo_ignorados": "paho-mqtt e amqtt indisponiveis para o interpretador acessivel"
+  },
+  "mosquitto": {
+    "host": "127.0.0.1",
+    "porta": 1883,
+    "connack": "aceito",
+    "publicacao_assinatura_real": true,
+    "retencao_teste": false,
+    "configuracao_servico_alterada": false,
+    "ponte_paho_com_broker_real_testada_nesta_revisao": false
+  },
+  "edge_impulse": {
+    "zip_real_inspecionado_e_importado_em_pasta_temporaria": true,
+    "modelo_no_zip": "eventos5_20261012",
+    "inputs": 350,
+    "classes": 5,
+    "hash_modelo": "0ddae062f70ed64c90c31633043d2bcb65df80eb4aba308a8e5efdf9a225e98e",
+    "contratos_python_e_servidor_coincidiram": true,
+    "P10_mantido_no_pacote_principal": true,
+    "SDK_compilado_com_novo_adaptador": false
+  },
+  "novo_firmware_compilado": false,
+  "upload_placa": false,
+  "ensaio_fisico": false,
+  "instalado_na_pasta_Desktop_github": false,
+  "commit_ou_push": false,
+  "bloqueios": [
+    "Controle de aplicativos exige aprovacao, mas politica da sessao e never",
+    "Chrome recusou abertura do Edge Impulse por politica de origem",
+    "Python 3.13 registrado no Windows nao pode ser executado nesta sessao",
+    "Download de Python/dependencias bloqueado por permissoes de rede",
+    "Gravacao da tarefa restrita ao workspace e diretorio temporario",
+    "Execucao do Arduino CLI instalado negada por permissao"
+  ],
+  "portas_observadas": {
+    "COM1": "serial do computador",
+    "COM3": "Bluetooth",
+    "COM6": "Bluetooth",
+    "COM7": "Bluetooth"
+  },
+  "porta_usb_esp32_identificada": false
+}

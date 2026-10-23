@@ -1,0 +1,57 @@
+test_boot_epoch_cancel_and_scenario_change_abort (test_aquisicao.CaptureTests) ... WARNING:root:Captura 0000007b:1 incompleta: A placa reiniciou ou houve interrupþÒo na aquisiþÒo.
+WARNING:root:Captura 0000007b:1 incompleta: A placa reiniciou ou houve interrupþÒo na aquisiþÒo.
+WARNING:root:Captura 0000007b:1 incompleta: Captura cancelada: interrupþÒo
+WARNING:root:Captura 0000007b:1 incompleta: O cenßrio mudou durante a captura.
+ok
+test_complete_capture_and_wrong_prediction_still_saved_with_true_label (test_aquisicao.CaptureTests) ... ok
+test_duplicate_capture_does_not_count_twice (test_aquisicao.CaptureTests) ... ok
+test_file_failure_never_commits_count (test_aquisicao.CaptureTests) ... ok
+test_identical_row_duplicate_is_idempotent (test_aquisicao.CaptureTests) ... ok
+test_incomplete_capture_not_saved (test_aquisicao.CaptureTests) ... ok
+test_invalid_26th_row_aborts_all_data (test_aquisicao.CaptureTests) ... WARNING:root:Captura 0000007b:1 incompleta: Dados invßlidos durante a captura. Repita a aquisiþÒo.
+ok
+test_nan_wrong_model_or_14_features_rejected (test_aquisicao.CaptureTests) ... WARNING:root:Captura 0000007b:1 incompleta: Dados invßlidos durante a captura. Repita a aquisiþÒo.
+WARNING:root:Captura 0000007b:1 incompleta: Dados invßlidos durante a captura. Repita a aquisiþÒo.
+WARNING:root:Captura 0000007b:1 incompleta: Dados invßlidos durante a captura. Repita a aquisiþÒo.
+ok
+test_no_end_or_result_does_not_count (test_aquisicao.CaptureTests) ... ok
+test_order_or_conflicting_duplicate_aborts (test_aquisicao.CaptureTests) ... WARNING:root:Captura 0000007b:1 incompleta: Dados fora de ordem. Repita a captura.
+WARNING:root:Captura 0000007b:1 incompleta: Dados fora de ordem. Repita a captura.
+ok
+test_resume_and_hash_detect_changed_csv (test_aquisicao.CaptureTests) ... ok
+test_second_program_cannot_open_same_campaign (test_aquisicao.CaptureTests) ... ok
+test_command_ack_button_mode_and_server_restart (test_aquisicao.IntegrationTests) ... ok
+test_serial_command_mapping (test_aquisicao.IntegrationTests) ... ok
+test_fragmented_serial_stream_is_saved_without_http (test_aquisicao.SerialWorkerTests) ... WARNING:root:Linha serial invßlida: b'\r'
+ok
+test_campaign_rejects_another_model_hash (test_integracao_nova.ImportTests) ... ok
+test_includes_localized_without_modifying_values (test_integracao_nova.ImportTests) ... ok
+test_path_boundary (test_integracao_nova.ImportTests) ... ok
+test_path_traversal_rejected (test_integracao_nova.ImportTests) ... ok
+test_accepted_broker (test_integracao_nova.ProbeTests) ... ok
+test_existing_broker_reused_and_not_stopped (test_integracao_nova.ProbeTests) ... ok
+test_not_mqtt_and_auth_refused (test_integracao_nova.ProbeTests) ... ok
+test_unused_port (test_integracao_nova.ProbeTests) ... ok
+test_lan_dashboard_origin_and_collector_routes (test_rede_local.LanTests) ... ok
+test_mqtt_connect_disconnect_reconnect_from_lan (test_rede_local.LanTests) ... skipped 'Instale requirements.txt para os testes MQTT.'
+test_foreign_host_and_origin_blocked (test_servidor.HTTPTests) ... ok
+test_http_complete_command_ack_and_button_mode (test_servidor.HTTPTests) ... ok
+test_json_limits_content_type_and_duplicate_keys (test_servidor.HTTPTests) ... ok
+test_loopback_only_and_security_headers (test_servidor.HTTPTests) ... ok
+test_broker_roundtrip_reconnect_retained_state_and_106_filter (test_servidor.MQTTTests) ... skipped 'Instale requirements.txt para os testes MQTT.'
+test_106_features_and_model_contract_are_required (test_servidor.StateTests) ... ok
+test_command_whitelist_rejects_arbitrary_text (test_servidor.StateTests) ... ok
+test_commands_repeat_until_ack_and_are_bounded (test_servidor.StateTests) ... ok
+test_disconnect_and_stale_heartbeat_clear_estimated_states (test_servidor.StateTests) ... ok
+test_firmware_busy_rejects_pending_mode_without_confirmation (test_servidor.StateTests) ... ok
+test_invalid_neural_probabilities_rejected (test_servidor.StateTests) ... ok
+test_mode_needs_board_confirmation_after_usb_ack (test_servidor.StateTests) ... ok
+test_pending_mode_expires_even_after_transport_ack (test_servidor.StateTests) ... ok
+test_reboot_clears_old_result_and_pending_commands (test_servidor.StateTests) ... ok
+test_saved_file_confirmation_must_match_current_capture (test_servidor.StateTests) ... ok
+test_start_requires_confirmed_acquisition_scenario (test_servidor.StateTests) ... ok
+
+----------------------------------------------------------------------
+Ran 41 tests in 5.398s
+
+OK (skipped=2)

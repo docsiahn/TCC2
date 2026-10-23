@@ -1,0 +1,139 @@
+{
+  "data": "2026-10-23",
+  "firmware": {
+    "protocolo": "TCC_SISTEMA_V2",
+    "modelo": "eventos5_v1_p10_20261015",
+    "sha256_modelo": "dd5a7cef19f07b1cdf6c4bd5b62aa321f81d18283c6094dd074c227178dc1cdb",
+    "firmware": "firmware/tcc_monitor/tcc_monitor.ino",
+    "compilacao": {
+      "fqbn": "esp32:esp32:esp32",
+      "core_esp32": "3.3.10",
+      "sucesso": true,
+      "programa_bytes": 362152,
+      "globais_bytes": 56676,
+      "upload_realizado": false,
+      "observacao": "Avisos volatile do pipeline preservado e do contador de comandos; sem erros de compilacao."
+    },
+    "botao": {
+      "gpio": 4,
+      "ligacao": "GPIO4 para GND, INPUT_PULLUP",
+      "debounce_ms": 40,
+      "intervalo_apos_ultima_soltura_ms": 350,
+      "pressao_longa_ignorada_ms": 1200,
+      "clique_1": "Inicia captura somente em modo aquisicao e com cenario 1..12 selecionado",
+      "clique_2": "Modo teste",
+      "clique_3": "Modo aquisicao",
+      "cliques_4_ou_mais": "Ignorados",
+      "testes_nativos": 16
+    },
+    "regressao_rede": {
+      "capturas": 221,
+      "classes_iguais_a_referencia": 221,
+      "max_diferenca_probabilidades": 1.19209e-06,
+      "features_exportadas": 106,
+      "features_previsao": 14,
+      "headers_byte_identicos_a_v1_p10": [
+        "rede_eventos5.h",
+        "features_treinamento.h",
+        "pipeline.h",
+        "estados.h"
+      ]
+    },
+    "comandos": [
+      "PING",
+      "MODE teste",
+      "MODE aquisicao",
+      "SCENARIO 1..12",
+      "CAPTURE",
+      "CAPTURE 1..12",
+      "CANCEL",
+      "STATE 0|1 0|1",
+      "RESET"
+    ],
+    "mensagens": [
+      "pronto",
+      "heartbeat",
+      "modo",
+      "cenario",
+      "estados",
+      "aquecendo",
+      "captura_armada",
+      "captura_inicio",
+      "acao",
+      "resultado",
+      "entrada",
+      "entrada_fim",
+      "captura_cancelada",
+      "aviso",
+      "falha"
+    ],
+    "campos_comuns": [
+      "protocolo",
+      "modelo",
+      "sha256",
+      "tipo",
+      "dispositivo",
+      "boot",
+      "epoch",
+      "uptime_ms",
+      "modo",
+      "origem_modo",
+      "cenario_selecionado",
+      "captura_ativa",
+      "captura_id",
+      "teste_id",
+      "cenario",
+      "classe_esperada",
+      "origem_captura",
+      "estados",
+      "heap_livre"
+    ],
+    "contrato_captura": {
+      "modo_inicial": "teste",
+      "cenario_inicial": 0,
+      "id": "boot_hex_8:contador_decimal_monotonico_no_boot",
+      "teste_id": "contador inteiro gerado na placa",
+      "janela_ms": 200,
+      "janelas_por_captura": 25,
+      "valores_por_entrada": 106,
+      "entrada_janela": "0..24",
+      "entrada_timestamp": "0..4800 ms, passo 200",
+      "inicio": "CAPTURE exige modo aquisicao; SCENARIO deve receber ACK antes do clique na placa",
+      "conclusao": "entrada_fim, 25 janelas, captura_ativa=false, captura_id e teste_id preservados na mensagem final",
+      "ocupado": "MODE, SCENARIO, STATE, RESET e nova CAPTURE recebidos durante captura sao rejeitados com aviso/motivo ocupado; nunca sao aplicados tardiamente apos exportacao",
+      "cancelamento": "CANCEL interrompe aquisicao ou exportacao entre linhas; captura_cancelada sem entrada_fim",
+      "limites_verificacao": "Sem teste fisico de GPIO/USB nesta etapa; a validacao inclui compilacao e testes nativos."
+    },
+    "led": {
+      "gpio": 2,
+      "ativo_alto": true,
+      "teste": "1 pulso por segundo",
+      "aquisicao": "2 pulsos por ciclo de 2 segundos",
+      "captura": "aceso continuamente",
+      "ensaio_fisico": false
+    }
+  },
+  "software": {
+    "python": "3.12.14",
+    "sistema": "Windows",
+    "testes_automaticos": 33,
+    "testes_passaram": true,
+    "mqtt_broker_real_loopback": true,
+    "http_e_mqtt_ipv4_lan_testados": true,
+    "mqtt_conectar_desconectar_reconectar_testados": true,
+    "botao_mqtt_janela_python_verificado": true,
+    "celular_fisico_testado": false,
+    "replay_capturas_anteriores": 24,
+    "replay_features_iguais": true,
+    "replay_observacao": "Envelope adaptado do protocolo anterior; não é um novo ensaio físico.",
+    "painel_http_inspecionado_no_navegador": true,
+    "janela_tk_inicializacao_e_fechamento_verificados": true
+  },
+  "osciloscopio_fontes_byte_identicas": [
+    "firmware/osciloscopio_gpio36_39/osciloscopio_gpio36_39.ino",
+    "osciloscopio.py",
+    "requirements.txt"
+  ],
+  "ensaio_fisico_nova_integracao_realizado": false,
+  "modelo_alterado": false
+}
