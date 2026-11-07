@@ -1,0 +1,19 @@
+{
+  "data": "2026-10-27",
+  "origem": "github.zip",
+  "sha256_zip_origem": "0453808b09a9ff01005efcb7d606d04a4fe7229ad9af94337870a07760091c65",
+  "revisao": "exportacao_automatica_5_classes",
+  "python": "3.13.14",
+  "testes_exportacao": 11,
+  "aprovados": 11,
+  "condicoes_verificadas": 12,
+  "classes_exportadas": 5,
+  "features_preservadas": 106,
+  "janelas_por_captura": 25,
+  "retomada_campanha_anterior_testada": true,
+  "exportacao_sem_usb_testada": true,
+  "falha_exportacao_preserva_original_testada": true,
+  "firmware_servidor_e_osciloscopio_inalterados": true,
+  "ensaio_fisico_realizado": false,
+  "upload_edge_impulse_realizado": false
+}
