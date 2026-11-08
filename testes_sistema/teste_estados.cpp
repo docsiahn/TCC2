@@ -1,5 +1,6 @@
 #include <cassert>
 #include <iostream>
+#include <string>
 #include "../firmware/tcc_monitor/estados.h"
 
 static tcc::Decisao confirmar(tcc::Estados &s, int classe, uint32_t agora) {
@@ -49,5 +50,28 @@ int main() {
   s.informar(0,1);
   assert(s.observar(1,.95f,.8f,25000,true,true).aceito);
   assert(s.valores[0]==1 && s.valores[1]==1);
-  std::cout << "OK: inicializacao pelas quatro classes, filtros, repeticao, bloqueio, reset e modo guiado\n";
+  // Degrau fora da faixa vista no treino: a saida de evento nao confirma e zera a contagem.
+  {
+    tcc::Estados e; e.informar(1,1);
+    auto d=e.observar(4,.95f,.8f,30000,true,false,false);
+    assert(!d.aceito && std::string(d.motivo)=="fora_da_posicao" && e.foraDaPosicao==1);
+    // Classe transitoria fora da faixa seguida da classe certa dentro da faixa.
+    e.observar(4,.95f,.8f,30200,true,false,false);
+    e.observar(2,.95f,.8f,30400,true,false,true);
+    d=e.observar(2,.95f,.8f,30600,true,false,true);
+    assert(d.aceito && e.valores[0]==0 && e.valores[1]==1);
+    // Uma janela dentro e outra fora nao formam duas confirmacoes seguidas.
+    tcc::Estados f; f.informar(0,0);
+    f.observar(3,.95f,.8f,40000,true,false,true);
+    f.observar(3,.95f,.8f,40200,true,false,false);
+    d=f.observar(3,.95f,.8f,40400,true,false,true);
+    assert(!d.aceito && f.valores[1]==0);
+    d=f.observar(3,.95f,.8f,40600,true,false,true);
+    assert(d.aceito && f.valores[1]==1);
+    // Sem evento e aquisicao guiada nao dependem da posicao.
+    assert(f.observar(0,.98f,.9f,41000,true,false,false).aceito);
+    tcc::Estados g; g.informar(0,0);
+    assert(g.observar(1,.95f,.8f,42000,true,true,false).aceito && g.valores[0]==1);
+  }
+  std::cout << "OK: inicializacao pelas quatro classes, filtros, repeticao, bloqueio, reset, modo guiado e posicao do degrau\n";
 }

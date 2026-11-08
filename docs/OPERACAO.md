@@ -25,12 +25,15 @@ A meta padrão é 50 capturas por condição, totalizando 600. Capturas adiciona
 
 - `campanha.json`: identificação da campanha, condições, meta e lista dos registros confirmados.
 - `csv/<condicao>/<identificador>.csv`: `timestamp` em milissegundos e 106 features, em 25 linhas.
+- `edge_impulse/<classe>/<classe>.<identificador>.csv`: cópia automática nas cinco classes, com os mesmos tempos e as 106 features do original.
 - `detalhes/<identificador>.json`: rótulo definido pela condição escolhida, resposta da rede, origem do gatilho, condições e hash do CSV.
 - `diagnostico.log`: registro técnico para investigação de falhas; a tela principal exibe apenas as orientações necessárias.
 
 Ordem das features: `VRMS, IRMS, P, Q, VTHD50, ITHD50`, 50 amplitudes `VFFT_H1..H50` e 50 amplitudes `IFFT_H1..H50`. Valores RMS e espectrais são derivados do ADC. Não interpretar os números como grandezas calibradas sem calibração específica do circuito.
 
 Uma previsão incorreta da rede **não descarta** a amostra. O rótulo é a condição que o operador selecionou; a previsão é registrada separadamente. Uma transmissão incompleta não conta como captura salva. As verificações de formato ocorrem internamente, sem confirmação manual de salvar/descartar.
+
+As cópias para o Edge Impulse usam esse mesmo rótulo experimental, não a previsão da rede. O botão **Abrir 5 classes para Edge Impulse** abre a pasta de importação e confere suas cópias. Ao retomar uma campanha antiga, o agrupamento é criado automaticamente. Consulte `EXPORTACAO_EDGE_IMPULSE.md`.
 
 A mesma pasta só pode ser aberta por uma instância do coletor. Para retomar, mantenha `campanha.json`, os CSVs e os detalhes juntos. Arquivos parciais de uma interrupção não contam na campanha. Não edite os CSVs registrados: seus hashes são conferidos na retomada.
 

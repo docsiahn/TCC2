@@ -18,6 +18,7 @@ capturas/
 dados/
 campanha.json
 detalhes/
+edge_impulse/
 .DS_Store
 Thumbs.db
 
@@ -25,3 +26,6 @@ Thumbs.db
 backups_modelo/
 ei_import_*/
 firmware/modelo_edge_impulse.zip
+
+# Credenciais do Wi-Fi/MQTT da placa (copiar de segredos_exemplo.h)
+firmware/tcc_monitor/segredos.h

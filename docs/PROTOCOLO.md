@@ -26,6 +26,8 @@ Modo inicial: teste; condição inicial: 0, ainda não selecionada. Durante capt
 
 O campo `classe_esperada` descreve o rótulo experimental, enquanto `classe_id` em `resultado` descreve a previsão. São independentes.
 
+No modo teste, `resultado` traz `posicao_degrau` (janela 1..24 em que começa o degrau de IRMS do contexto, contada da mais antiga) e `faixa_posicao`. Uma previsão de evento com o degrau fora da faixa recebe `decisao` = `fora_da_posicao` e não conta para a confirmação; `fora_da_posicao` também é o contador acumulado dessas recusas.
+
 ## HTTP local
 
 | Requisição | Uso |

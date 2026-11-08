@@ -133,6 +133,8 @@ class CaptureStore:
         self.root = Path(root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / "campanha.json"
+        self.edge_impulse_root = self.root / "edge_impulse"
+        self.export_error = ""
         if not integer(repetitions, 1, 10000):
             raise ValueError("Quantidade por classe inválida.")
         self.lock = threading.RLock()
@@ -167,6 +169,8 @@ class CaptureStore:
                                      condicoes=conditions or dict(potencia_microondas="P10", velocidade_liquidificador="1", cargas_fundo="não informado"),
                                      registros=[])
                 atomic_json(self.path, self.manifest)
+            # Campanhas anteriores também recebem as cópias agrupadas na retomada.
+            self.export_edge_impulse()
         except Exception:
             self.close()
             raise
@@ -202,6 +206,57 @@ class CaptureStore:
             counts[r["cenario"]] += 1
         return counts
 
+    def edge_impulse_path(self, record):
+        scenario = record["cenario"]
+        if not integer(scenario, 1, 12):
+            raise ValueError("Condição inválida no registro da campanha.")
+        label = LABELS[SCENARIOS[scenario - 1]["neural_class"]]
+        unique = uuid.UUID(record["id"]).hex
+        # O prefixo antes do primeiro ponto permite inferir o rótulo no uploader.
+        return self.edge_impulse_root / label / (label + "." + unique + ".csv")
+
+    def export_edge_impulse(self, records=None):
+        """Cópias derivadas apenas de registros confirmados, com as 106 features.
+
+        Falhar na exportação não invalida a captura original já salva. Na próxima
+        abertura (ou no botão da pasta) as cópias ausentes/alteradas são refeitas.
+        """
+        with self.lock:
+            if self.export_error:
+                records = None  # Uma falha anterior exige conferir toda a exportação.
+            self.export_error = ""
+            try:
+                for label in LABELS:
+                    folder = self.edge_impulse_root / label
+                    if not path_inside(folder, self.root):
+                        raise ValueError("A pasta Edge Impulse deve permanecer dentro da campanha.")
+                    folder.mkdir(parents=True, exist_ok=True)
+                for record in self.records if records is None else records:
+                    source = self.root / record["csv"]
+                    target = self.edge_impulse_path(record)
+                    if not path_inside(source, self.root) or not path_inside(target, self.root):
+                        raise ValueError("Caminho inválido na campanha.")
+                    data = source.read_bytes()
+                    if hashlib.sha256(data).hexdigest() != record["sha256_csv"]:
+                        raise ValueError("O CSV original foi alterado; exportação interrompida.")
+                    if target.is_file() and target.read_bytes() == data:
+                        continue
+                    temp = target.with_name(target.name + "." + uuid.uuid4().hex + ".tmp")
+                    try:
+                        with temp.open("xb") as f:
+                            f.write(data)
+                            f.flush()
+                            os.fsync(f.fileno())
+                        os.replace(temp, target)
+                    finally:
+                        if temp.exists():
+                            temp.unlink()
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                self.export_error = "Dados originais preservados; exportação Edge Impulse pendente: " + str(exc)
+                logging.warning(self.export_error)
+                return False
+            return True
+
     def save(self, capture):
         cid = capture["captura_id"]
         rows, scenario = capture["rows"], capture["cenario"]
@@ -210,8 +265,10 @@ class CaptureStore:
         if not isinstance(capture.get("resultado"), dict):
             raise ValueError("A captura não terminou.")
         with self.lock:
-            if any(r["captura_id"] == cid and r["boot"] == capture["boot"] for r in self.records):
-                return None
+            for r in self.records:
+                if r["captura_id"] == cid and r["boot"] == capture["boot"]:
+                    self.export_edge_impulse([r])
+                    return None
             scenario_info = SCENARIOS[scenario - 1]
             unique = uuid.uuid4().hex
             folder = self.root / "csv" / scenario_info["slug"]
@@ -231,12 +288,19 @@ class CaptureStore:
                           csv=relative, sha256_csv=hashlib.sha256(csv_path.read_bytes()).hexdigest(),
                           condicoes=self.manifest["condicoes"], resultado=capture["resultado"],
                           origem_captura=capture.get("origem_captura", "não informada"))
+            record["rotulo_edge_impulse"] = LABELS[scenario_info["neural_class"]]
+            record["csv_edge_impulse"] = self.edge_impulse_path(record).relative_to(self.root).as_posix()
+            # Janelas com o ADC saturado, para filtrar capturas na análise (firmware que informa).
+            saturation = capture["resultado"].get("saturacao")
+            record["saturacao_adc"] = saturation if isinstance(saturation, dict) else None
             detail = self.root / "detalhes" / (unique + ".json")
             detail.parent.mkdir(exist_ok=True)
             atomic_json(detail, record)
             updated = dict(self.manifest, registros=self.records + [record])
             atomic_json(self.path, updated)
             self.manifest = updated
+            # O manifesto confirma primeiro: falhas anteriores não viram amostras de treino.
+            self.export_edge_impulse([record])
             return record
 
 
@@ -408,16 +472,21 @@ def registrar_diagnostico_placa(message, previous=None):
             reasons.append("mudanca_estados")
     else:
         reasons.append("primeira_mensagem")
-    if message.get("tipo") in ("falha", "captura_cancelada"):
+    if message.get("tipo") in ("falha", "captura_cancelada") or (
+            message.get("tipo") == "aviso" and str(message.get("motivo", "")).startswith("saturacao_adc_")):
         if (message.get("tipo"), message.get("motivo")) != (previous.get("tipo"), previous.get("motivo")):
             reasons.append("falha_informada")
     if message.get("tipo") == "resultado" and message.get("classe_id") in (1, 2, 3, 4):
         reasons.append("previsao_transicao")
+    saturation = message.get("saturacao")
+    if message.get("tipo") == "resultado" and isinstance(saturation, dict) and (
+            saturation.get("janelas_i") or saturation.get("janelas_v")):
+        reasons.append("saturacao_adc")
     if reasons:
         keys = ("tipo", "motivo", "boot", "epoch", "uptime_ms", "estados", "classe",
                 "confianca", "margem", "decisao", "aceito", "alterados", "seq",
                 "frames_perdidos", "inferencias_descartadas", "vrms_adc", "irms_adc",
-                "diagnostico_entrada", "revisao_firmware")
+                "diagnostico_entrada", "saturacao", "revisao_firmware")
         record = dict(gatilhos=reasons, anterior={k: previous.get(k) for k in
                       ("tipo", "boot", "epoch", "estados")},
                       atual={k: message[k] for k in keys if k in message})
@@ -612,7 +681,7 @@ class Interface:
         self.port = tk.StringVar()
         self.scenario = tk.StringVar(value="Escolha a classe antes da captura")
         self.auto_next = tk.BooleanVar(value=True)
-        self.status = tk.StringVar(value="Conecte a placa por USB")
+        self.status = tk.StringVar(value=client.store.export_error or "Conecte a placa por USB")
         self.mode = tk.StringVar(value="AGUARDANDO PLACA")
         self.action = tk.StringVar(value="Prepare os aparelhos")
         self.initial = tk.StringVar(value="")
@@ -651,6 +720,7 @@ class Interface:
         state_row = ttk.Frame(root);state_row.pack(pady=5)
         ttk.Button(state_row, text="Informar estados iniciais", command=self.state_dialog).pack(side="left", padx=6)
         ttk.Button(state_row, text="Abrir pasta dos dados", command=self.open_folder).pack(side="left", padx=6)
+        ttk.Button(root, text="Abrir 5 classes para Edge Impulse", command=self.open_edge_impulse).pack(pady=5)
         ttk.Label(root, textvariable=self.status, wraplength=1000).pack(pady=10)
         window.bind("<Return>", lambda _: self.send(dict(op="start")))
         window.bind("<F11>", lambda _: window.attributes("-fullscreen", not window.attributes("-fullscreen")))
@@ -717,7 +787,7 @@ class Interface:
             if kind == "error":
                 self.status.set(value)
             elif kind == "saved":
-                self.status.set("CAPTURA SALVA")
+                self.status.set(self.client.store.export_error or "CAPTURA SALVA — EDGE IMPULSE ATUALIZADO")
                 self.action.set("SALVA — PREPARE A PRÓXIMA")
                 self.update_progress()
                 if self.auto_next.get():
@@ -750,8 +820,15 @@ class Interface:
                     self.result.set("Resposta da rede: " + NETWORK_TITLES[m["classe_id"]])
                     if m["modo"] == "aquisicao":
                         self.action.set("SALVANDO")
+                    saturation = m.get("saturacao")
+                    if isinstance(saturation, dict) and integer(saturation.get("janelas_i"), 1, 25):
+                        self.status.set("Corrente saturou em %d janela(s), tolerado (ex.: partida do micro-ondas)."
+                                        % saturation["janelas_i"])
                 elif k in ("aviso", "falha", "captura_cancelada"):
-                    messages = {"cenario_nao_selecionado": "Selecione a classe antes de capturar.", "ocupado": "Aguarde a captura terminar ou cancele.", "captura_em_andamento": "Aguarde a captura terminar ou cancele.", "modo_incompativel": "Mude para aquisição antes de capturar.", "modo_teste": "Mude para aquisição antes de capturar."}
+                    messages = {"cenario_nao_selecionado": "Selecione a classe antes de capturar.", "ocupado": "Aguarde a captura terminar ou cancele.", "captura_em_andamento": "Aguarde a captura terminar ou cancele.", "modo_incompativel": "Mude para aquisição antes de capturar.", "modo_teste": "Mude para aquisição antes de capturar.",
+                                "saturacao_adc_corrente": "Corrente fora da faixa do ADC (firmware anterior). Grave o firmware corrigido.",
+                                "saturacao_adc_corrente_persistente": "Corrente acima da faixa do canal em várias janelas; sem classificação, estados mantidos.",
+                                "saturacao_adc_tensao_persistente": "Tensão acima da faixa do canal em várias janelas; sem classificação, estados mantidos."}
                     self.status.set(messages.get(m.get("motivo"), str(m.get("motivo", "Verifique a placa.")).replace("_", " ")))
         if not self.client.connected:
             self.mode.set("USB DESCONECTADO")
@@ -783,6 +860,15 @@ class Interface:
         else:
             self.status.set(str(self.client.store.root))
 
+    def open_edge_impulse(self):
+        if not self.client.store.export_edge_impulse():
+            self.status.set(self.client.store.export_error)
+            return
+        if os.name == "nt":
+            self.call(lambda: os.startfile(self.client.store.edge_impulse_root))
+        else:
+            self.status.set(str(self.client.store.edge_impulse_root))
+
     def close(self):
         self.client.close()
         self.root.destroy()
@@ -797,15 +883,27 @@ def main(argv=None):
     parser.add_argument("--servidor", default="http://127.0.0.1:8765")
     parser.add_argument("--sem-servidor", action="store_true")
     parser.add_argument("--sem-interface", action="store_true")
+    parser.add_argument("--somente-exportar", action="store_true",
+                        help="Agrupa uma campanha existente nas 5 classes e encerra, sem USB ou servidor.")
     parser.add_argument("--potencia", default="P10")
     parser.add_argument("--velocidade", default="1")
     parser.add_argument("--fundo", default="não informado")
     args = parser.parse_args(argv)
+    if args.somente_exportar and not (args.dados / "campanha.json").is_file():
+        parser.error("Informe --dados com a pasta de uma campanha existente.")
     try:
         store = CaptureStore(args.dados, args.repeticoes,
                              dict(potencia_microondas=args.potencia, velocidade_liquidificador=args.velocidade, cargas_fundo=args.fundo))
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
+    if args.somente_exportar:
+        try:
+            if store.export_error:
+                parser.exit(1, store.export_error + "\n")
+            print("5 classes prontas para o Edge Impulse: " + str(store.edge_impulse_root))
+        finally:
+            store.close()
+        return
     handler = RotatingFileHandler(store.root / "diagnostico.log", maxBytes=2_000_000, backupCount=2, encoding="utf-8")
     logging.basicConfig(level=logging.INFO, handlers=[handler], format="%(asctime)s %(levelname)s %(message)s")
     client = DeviceClient(store, None if args.sem_servidor else args.servidor)
@@ -819,6 +917,8 @@ def main(argv=None):
                 kind, value = client.events.get()
                 if kind in ("error", "saved"):
                     print(value if kind == "error" else "Captura salva: " + value["csv"], flush=True)
+                    if kind == "saved" and store.export_error:
+                        print(store.export_error, flush=True)
         except KeyboardInterrupt:
             client.close()
         return

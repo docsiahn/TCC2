@@ -3,9 +3,11 @@
 #include "modelo_inferencia.h"
 #include "pipeline.h"
 #include "estados.h"
+#include "posicao_degrau.h"
 #include "controle_modo.h"
 #include "indicador_led.h"
 #include "validacao_entrada.h"
+#include "mqtt_direto.h"
 
 namespace tcc {
 static_assert(tcc_modelo::CONTEXTO == N_CONTEXTO && tcc_modelo::FEATURES_ORIGINAIS == N_FEATURES, "Contrato das features divergente");
@@ -32,6 +34,13 @@ static uint32_t contadorCapturas = 0, capturaEpoch = 0, capturaPrimeiroSeq = 0;
 static char capturaId[32] = "";
 static int64_t pedidoCapturaUs = 0, estadoInformadoUs = 0;
 static volatile uint32_t comandosDescartados = 0;
+// Encaminhamento para o MQTT direto (mqtt_direto.h); sem segredos.h nada e publicado.
+static const char *tipoMensagem = "";
+static bool mensagemEvento = false;
+static uint32_t eventoSeq = 0;
+static char bufferMqtt[sizeof(mensagem) + 128];
+static char estadoMqttPublicado[96] = "";
+static int64_t estadoMqttUs = 0;
 
 static const char *nomeModo() { return modoTeste ? "teste" : "aquisicao"; }
 static void enviar(const char *texto) {
@@ -49,7 +58,7 @@ static void acrescentar(const char *formato, ...) {
   usado += static_cast<size_t>(n);
 }
 static void cabecalho(const char *tipo, bool identificarCaptura = false) {
-  usado = 0; mensagemValida = true;
+  usado = 0; mensagemValida = true; tipoMensagem = tipo; mensagemEvento = false;
   bool temCaptura = capturaAtiva || identificarCaptura;
   acrescentar(
     "{\"protocolo\":\"%s\",\"modelo\":\"%s\",\"sha256\":\"%s\",\"tipo\":\"%s\",\"dispositivo\":\"%s\","
@@ -61,12 +70,54 @@ static void cabecalho(const char *tipo, bool identificarCaptura = false) {
     cenarioSelecionado, capturaAtiva ? "true" : "false", temCaptura ? capturaId : "",
     (unsigned long)(temCaptura ? contadorCapturas : 0), temCaptura ? capturaCenario : 0,
     temCaptura ? capturaEsperada : -1, temCaptura ? origemCaptura : "", estados.valores[0], estados.valores[1], ESP.getFreeHeap());
-  acrescentar(",\"revisao_firmware\":\"diagnostico_entrada_v1_20261023\"");
+  acrescentar(",\"revisao_firmware\":\"posicao_degrau_v6_20261107\"");
 }
+// Resumo da saturacao do ADC no ultimo contexto validado.
+static void acrescentarSaturacao(const DiagnosticoEntrada &d) {
+  acrescentar(",\"saturacao\":{\"janelas_v\":%u,\"janelas_i\":%u,\"max_amostras_v\":%u,\"max_amostras_i\":%u,"
+              "\"primeira_janela_i\":%d,\"limite_amostras_janela\":%u,\"limite_janelas\":%u}",
+              d.janelasSaturadasV, d.janelasSaturadasI, d.maxSaturadasV, d.maxSaturadasI,
+              d.primeiraSaturadaI, SATURACAO_AMOSTRAS_JANELA, SATURACAO_JANELAS_MAX);
+}
+static void encaminharMqtt();
 static bool concluirMensagem() {
   acrescentar("}");
   if (!mensagemValida) return false;
-  enviar(mensagem); return true;
+  enviar(mensagem); encaminharMqtt(); return true;
+}
+// Estado retido em <base>/estado: publicado ao conectar, quando modo/estados/captura mudam
+// e a cada 30 s. Mesmos campos principais que o servidor.py publica.
+static void publicarEstadoMqtt(bool forcar) {
+  char chave[sizeof(estadoMqttPublicado)];
+  snprintf(chave, sizeof(chave), "%s|%d|%d|%d", nomeModo(), estados.valores[0], estados.valores[1], capturaAtiva ? 1 : 0);
+  if (!forcar && !strcmp(chave, estadoMqttPublicado) && esp_timer_get_time() - estadoMqttUs < 30000000) return;
+  char e[512];
+  snprintf(e, sizeof(e),
+    "{\"protocolo\":\"%s\",\"modelo\":\"%s\",\"sha256\":\"%s\",\"dispositivo\":\"%s\",\"boot\":%lu,"
+    "\"uptime_ms\":%lu,\"modo\":\"%s\",\"estados\":[%d,%d],\"captura_ativa\":%s,\"usb_conectado\":null,"
+    "\"simulation\":false,\"transporte\":\"wifi_esp32\",\"rssi\":%d}",
+    PROTOCOLO, MODELO, SHA_MODELO, DISPOSITIVO, (unsigned long)bootId, (unsigned long)millis(), nomeModo(),
+    estados.valores[0], estados.valores[1], capturaAtiva ? "true" : "false", mqtt_direto::rssi());
+  if (mqtt_direto::publicar("/estado", e, 1, true)) {
+    strcpy(estadoMqttPublicado, chave); estadoMqttUs = esp_timer_get_time();
+  }
+}
+static void encaminharMqtt() {
+  if (!mqtt_direto::configurado()) return;
+  if (!strcmp(tipoMensagem, "entrada")) return;   // as 106 features de captura seguem somente pela USB
+  if (!strcmp(tipoMensagem, "resultado") && usado >= 2 && mensagem[usado - 1] == '}') {
+    // Mesmo JSON enviado pela USB, com o transporte antes da chave final.
+    memcpy(bufferMqtt, mensagem, usado - 1);
+    char *fim = bufferMqtt + usado - 1; const size_t resta = sizeof(bufferMqtt) - (usado - 1);
+    snprintf(fim, resta, ",\"transporte\":\"wifi_esp32\",\"simulation\":false}");
+    mqtt_direto::publicar("/telemetria", bufferMqtt, 0, false);
+    if (mensagemEvento) {
+      snprintf(fim, resta, ",\"transporte\":\"wifi_esp32\",\"simulation\":false,\"evento_id\":\"%lu:%lu:%lu\"}",
+               (unsigned long)bootId, (unsigned long)epochAtual(), (unsigned long)eventoSeq);
+      mqtt_direto::publicar("/eventos", bufferMqtt, 1, false);
+    }
+  }
+  publicarEstadoMqtt(mqtt_direto::consumirPedidoEstado());
 }
 static void numeroDiagnostico(const char *nome,double valor) {
   if (std::isfinite(valor)) acrescentar(",\"%s\":%.9g",nome,valor);
@@ -84,7 +135,9 @@ static void acrescentarDiagnosticoEntrada() {
                 (unsigned)FFT_N,f.tempoInternoValido?"true":"false");
     numeroDiagnostico("vrms_adc",f.valores[0]); numeroDiagnostico("irms_adc",f.valores[1]);
   }
-  acrescentar("},\"frames_perdidos\":%lu,\"inferencias_descartadas\":%lu",
+  acrescentar("}");
+  acrescentarSaturacao(d);
+  acrescentar(",\"frames_perdidos\":%lu,\"inferencias_descartadas\":%lu",
               (unsigned long)framesPerdidos,(unsigned long)inferenciasDescartadas);
 }
 static void status(const char *tipo, const char *motivo, uint32_t n = 0,
@@ -94,6 +147,12 @@ static void status(const char *tipo, const char *motivo, uint32_t n = 0,
   acrescentar(",\"motivo\":\"%s\",\"origem\":\"%s\",\"janelas\":%lu,\"features_exportadas\":106,\"features_previsao\":%u",
               motivo, origem, (unsigned long)n, tcc_modelo::FEATURES_PREVISAO);
   if (detalharEntrada) acrescentarDiagnosticoEntrada();
+  if (!strcmp(tipo, "pronto") || !strcmp(tipo, "heartbeat"))
+    acrescentar(",\"mqtt_direto\":{\"configurado\":%s,\"conectado\":%s,\"publicadas\":%lu,\"descartadas\":%lu,"
+                "\"conexoes\":%lu,\"rssi\":%d}",
+                mqtt_direto::configurado() ? "true" : "false", mqtt_direto::estaConectado() ? "true" : "false",
+                (unsigned long)mqtt_direto::totalPublicadas(), (unsigned long)mqtt_direto::totalDescartadas(),
+                (unsigned long)mqtt_direto::totalConexoes(), mqtt_direto::rssi());
   concluirMensagem();
 }
 static void cancelarCaptura(const char *motivo, const char *origem = "sistema", bool detalharEntrada = false) {
@@ -112,7 +171,8 @@ static uint32_t copiarContexto(uint32_t epoch) {
 }
 static bool prepararEntrada(double &intervalo) {
   if (!validarContextoEntrada(leitura,N_CONTEXTO,FRAMES_JANELA,CONVERSOES_FRAME,
-                             VRMS_MINIMO_ADC,10,intervalo,diagnosticoEntrada)) return false;
+                             VRMS_MINIMO_ADC,SATURACAO_AMOSTRAS_JANELA,SATURACAO_JANELAS_MAX,
+                             intervalo,diagnosticoEntrada)) return false;
   const double angulo=-2.0*PI_F*60.0*intervalo/1000000.0;
   const double c=cos(angulo),s=sin(angulo);
   char numero[64];
@@ -197,9 +257,13 @@ static bool enviarEntradaCaptura(const FrameFeatures &fim) {
 static void inferir(const FrameFeatures &fim, bool guiado) {
   double intervalo;
   if (!prepararEntrada(intervalo)) {
-    estados.resetar();
+    // Saturacao persistente nao e perda de dados: os aparelhos continuam no estado
+    // conhecido. A placa apenas deixa de classificar enquanto a corrente estiver fora
+    // da faixa e informa um aviso. Falhas de integridade continuam zerando os estados.
+    const bool saturacao = motivoSaturacao(diagnosticoEntrada.motivo);
+    if (!saturacao) estados.resetar();
     if (guiado) cancelarCaptura(diagnosticoEntrada.motivo,"sistema",true);
-    else status("falha",diagnosticoEntrada.motivo,0,"sistema",false,true);
+    else status(saturacao ? "aviso" : "falha",diagnosticoEntrada.motivo,0,"sistema",false,true);
     return;
   }
   float probs[5] = {};
@@ -215,21 +279,28 @@ static void inferir(const FrameFeatures &fim, bool guiado) {
   for (unsigned k = 1; k < 5; ++k) if (probs[k] > probs[classe]) classe = k;
   for (unsigned k = 0; k < 5; ++k) if (k != classe && probs[k] > segunda) segunda = probs[k];
   float confianca = probs[classe];
-  Decisao d = estados.observar(classe, confianca, confianca - segunda, millis(), true, guiado);
+  // IRMS (feature 1) das 25 janelas, com o mesmo arredondamento usado na rede.
+  const unsigned posicao = posicaoDegrau(vetorModelo + 1, N_CONTEXTO, N_FEATURES);
+  const bool posicaoOk = posicaoDegrauValida(posicao, POSICAO_DEGRAU_MIN, POSICAO_DEGRAU_MAX);
+  Decisao d = estados.observar(classe, confianca, confianca - segunda, millis(), true, guiado, posicaoOk);
   cabecalho("resultado", guiado);
+  mensagemEvento = d.aceito && d.alterados; eventoSeq = fim.seq;
   acrescentar(
     ",\"seq\":%lu,\"fim_janela_us\":%llu,\"classe_id\":%u,\"classe\":\"%s\",\"confianca\":%.6f,\"margem\":%.6f,"
     "\"decisao\":\"%s\",\"origem_estado\":\"%s\",\"alterados\":%u,\"aceito\":%s,\"contexto_ms\":5000,\"janela_ms\":200,"
     "\"inferencia_ms\":%.3f,\"atraso_ms\":%.3f,\"vrms_adc\":%.6f,\"irms_adc\":%.6f,"
     "\"frames_perdidos\":%lu,\"inferencias_descartadas\":%lu,\"eventos\":%lu,\"repetidos\":%lu,\"incompativeis\":%lu,"
+    "\"posicao_degrau\":%u,\"faixa_posicao\":[%u,%u],\"fora_da_posicao\":%lu,"
     "\"features_exportadas\":106,\"features_previsao\":%u,\"entrada_a_seguir\":%s,\"probabilidades\":[",
     (unsigned long)fim.seq, (unsigned long long)fim.fimFramesUs, classe, tcc_modelo::ROTULOS[classe], confianca, confianca - segunda,
     d.motivo, d.origem, d.alterados, d.aceito ? "true" : "false", inferenciaMs,
     (esp_timer_get_time() - fim.fimFramesUs) / 1000.0, fim.valores[0], fim.valores[1],
     (unsigned long)framesPerdidos, (unsigned long)inferenciasDescartadas, (unsigned long)estados.eventos,
-    (unsigned long)estados.repetidos, (unsigned long)estados.incompativeis, tcc_modelo::FEATURES_PREVISAO, guiado ? "true" : "false");
+    (unsigned long)estados.repetidos, (unsigned long)estados.incompativeis,
+    posicao, POSICAO_DEGRAU_MIN, POSICAO_DEGRAU_MAX, (unsigned long)estados.foraDaPosicao, tcc_modelo::FEATURES_PREVISAO, guiado ? "true" : "false");
   for (unsigned k = 0; k < 5; ++k) acrescentar("%s%.6f", k ? "," : "", probs[k]);
   acrescentar("]");
+  acrescentarSaturacao(diagnosticoEntrada);
   if (!concluirMensagem()) {
     if (guiado) cancelarCaptura("mensagem_excede_buffer"); else status("falha", "mensagem_excede_buffer");
     return;
@@ -305,6 +376,7 @@ void setup() {
     Serial.println("ERRO: memoria de inicializacao"); return;
   }
   for (int slot = 0; slot < 3; ++slot) xQueueSend(livresRaw, &slot, 0);
+  // Wi-Fi e MQTT iniciam no loop(), depois do ADC (ver abaixo).
   if (xTaskCreatePinnedToCore(tarefaInferencia, "rede_eventos5", 16384, nullptr, 2, &taskInferencia, 0) != pdPASS ||
       xTaskCreatePinnedToCore(tarefaFeatures, "features", 6144, nullptr, 3, nullptr, 1) != pdPASS ||
       xTaskCreatePinnedToCore(tarefaAquisicao, "adc_dma", 4096, nullptr, 6, nullptr, 1) != pdPASS) {
@@ -315,6 +387,15 @@ void setup() {
 void loop() {
   using namespace tcc;
   if (!iniciou) { delay(5); return; }
+  // Wi-Fi e MQTT em segundo plano, somente se segredos.h existir (ver segredos_exemplo.h).
+  // Comecam depois do primeiro bloco do ADC: o driver continuo precisa de cerca de 16 kB de RAM
+  // interna contigua, e com o Wi-Fi iniciado antes a alocacao falhava e a placa reiniciava em
+  // laco (abort em adc_continuous_new_handle, visto em 07/11/2026).
+  static bool redeIniciada = false;
+  if (!redeIniciada && (snapshotIsr().seq > 0 || fatalGlobal || millis() > 5000)) {
+    redeIniciada = true;
+    mqtt_direto::iniciar(bootId);
+  }
   static IndicadorLed led;
   bool aceso = led.atualizar(modoTeste, capturaAtiva, millis());
   digitalWrite(PINO_LED_STATUS, aceso == LED_ATIVO_ALTO ? HIGH : LOW);
