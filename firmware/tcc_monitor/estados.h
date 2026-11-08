@@ -13,13 +13,16 @@ struct Decisao { const char *motivo="aguardando",*origem="nenhuma"; uint8_t alte
 class Estados {
  public:
   int8_t valores[2]={-1,-1};
-  uint32_t eventos=0,repetidos=0,incompativeis=0;
+  uint32_t eventos=0,repetidos=0,incompativeis=0,foraDaPosicao=0;
   void resetar(){informar(-1,-1);}
   void informar(int a,int b){
     valores[0]=a;valores[1]=b;candidato_=-1;confirmacoes_=0;fundo_=0;
     for(unsigned j=0;j<2;++j){bloqueado_[j]=false;temEvento_[j]=false;ultimoEvento_[j]=0;}
   }
-  Decisao observar(int classe,float confianca,float margem,uint32_t agora,bool integra=true,bool guiado=false){
+  // posicaoValida=false: o degrau de corrente esta fora da faixa vista no treino; a saida de
+  // evento nao conta como confirmacao (sem_evento nao e afetado).
+  Decisao observar(int classe,float confianca,float margem,uint32_t agora,bool integra=true,bool guiado=false,
+                   bool posicaoValida=true){
     Decisao d;
     if(!integra){limpar();d.motivo="dados_invalidos";return d;}
     if(classe<0||classe>4||!std::isfinite(confianca)||!std::isfinite(margem)||confianca<CONFIANCA_MINIMA||margem<MARGEM_MINIMA){
@@ -30,6 +33,7 @@ class Estados {
       if(fundo_>=CONFIRMACOES_SEM_EVENTO||guiado)bloqueado_[0]=bloqueado_[1]=false;
       d.motivo="sem_evento";d.origem="historico";d.aceito=true;return d;
     }
+    if(!posicaoValida&&!guiado){limpar();++foraDaPosicao;d.motivo="fora_da_posicao";return d;}
     fundo_=0;
     if(candidato_!=classe){candidato_=classe;confirmacoes_=1;}else if(confirmacoes_<1000)++confirmacoes_;
     if(confirmacoes_<(guiado?1U:CONFIRMACOES_EVENTO)){d.motivo="confirmando";return d;}

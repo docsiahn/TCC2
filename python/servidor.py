@@ -77,8 +77,31 @@ KINDS = frozenset((
     "captura_inicio", "acao", "resultado", "entrada", "entrada_fim",
     "captura_cancelada", "aviso", "falha", "aquecendo", "estados",
 ))
+SATURATION_REASONS = {
+    "saturacao_adc_corrente": "Corrente fora da faixa do ADC (firmware anterior: qualquer janela saturada invalida 5 s).",
+    "saturacao_adc_tensao": "Tensão fora da faixa do ADC (firmware anterior: qualquer janela saturada invalida 5 s).",
+    "saturacao_adc_corrente_persistente": "Corrente acima da faixa do canal em várias janelas; a placa não classificou e manteve os estados.",
+    "saturacao_adc_tensao_persistente": "Tensão acima da faixa do canal em várias janelas; a placa não classificou e manteve os estados.",
+}
+
+
+def saturation_note(message: dict[str, Any]) -> str:
+    """Texto curto quando o resultado foi calculado com janelas saturadas (pico de partida)."""
+    info = message.get("saturacao")
+    if not isinstance(info, dict):
+        return ""
+    current, voltage = info.get("janelas_i"), info.get("janelas_v")
+    parts = []
+    if _integer(current, 1, 25):
+        parts.append("%d janela(s) de corrente" % current)
+    if _integer(voltage, 1, 25):
+        parts.append("%d janela(s) de tensão" % voltage)
+    return ("Resultado com " + " e ".join(parts) + " saturada(s), por exemplo na partida do micro-ondas.") if parts else ""
+
+
 COMMAND_TTL = 15.0
 CLIENT_TTL = 8.0
+WIFI_TTL = 10.0   # sem telemetria/estado da placa pelo Wi-Fi por mais que isso, os dados expiram
 COMMAND_LIMIT = 32
 BODY_LIMIT = 65536
 LOG = logging.getLogger("tcc.servidor")
@@ -204,6 +227,61 @@ class DashboardState:
         self.firmware: dict[str, Any] | None = None
         self.boot: int | None = None
         self.last_state_loss: dict[str, Any] | None = None
+        # Placa publicando direto pelo Wi-Fi (firmware com segredos.h); ver MQTTService.
+        self.wifi = {"online": False, "seen": None, "source": False, "rssi": None, "message": ""}
+
+    def board_direct(self) -> bool:
+        """True quando a própria placa publica no MQTT; o servidor então não republica."""
+        with self.lock:
+            return bool(self.wifi["online"] and self.wifi["seen"] is not None
+                        and self.clock() - self.wifi["seen"] <= WIFI_TTL)
+
+    def accept_wifi(self, topic_suffix: str, payload: Any) -> bool:
+        """Mensagens publicadas pela própria placa no MQTT (transporte wifi_esp32).
+
+        Com a USB conectada, a USB continua sendo a fonte do painel; pelo Wi-Fi só se marca
+        que a placa está publicando. Sem a USB, estados e resultado vêm do Wi-Fi.
+        """
+        if not isinstance(payload, dict) or payload.get("transporte") != "wifi_esp32":
+            return False
+        _json_finite(payload)
+        with self.lock:
+            now = self.clock()
+            if topic_suffix == "/placa/status":
+                if type(payload.get("online")) is not bool:
+                    return False
+                self.wifi.update(online=payload["online"], seen=now if payload["online"] else self.wifi["seen"],
+                                 message="Placa publicando pelo Wi-Fi." if payload["online"]
+                                 else "A placa saiu do MQTT (Wi-Fi ou energia).")
+                if not payload["online"] and self.wifi["source"] and not self.serial["connected"]:
+                    self._remember_state_loss("Placa desconectada do MQTT.")
+                    self.states, self.result, self.wifi["source"] = [-1, -1], None, False
+                self._changed()
+                return True
+            for field in ("protocolo", "modelo", "sha256"):
+                if payload.get(field) != self.contract.get(field):
+                    raise ValueError("Placa no MQTT com firmware ou modelo diferente do contrato.")
+            states = payload.get("estados")
+            if (not isinstance(states, list) or len(states) != 2
+                    or any(type(x) is not int or x not in (-1, 0, 1) for x in states)):
+                raise ValueError("Estados inválidos na mensagem MQTT da placa.")
+            if topic_suffix == "/telemetria":
+                payload = self.validate_serial(payload)
+            elif topic_suffix != "/estado":
+                return False
+            self.wifi.update(online=True, seen=now, rssi=payload.get("rssi", self.wifi["rssi"]))
+            if self.serial["connected"]:
+                return True
+            self.wifi["source"] = True
+            self.states = list(states)
+            if payload.get("modo") in ("teste", "aquisicao"):
+                self.mode_confirmed = payload["modo"]
+            if topic_suffix == "/telemetria":
+                self.result = copy.deepcopy(payload)
+                self.last_error = saturation_note(payload)
+            self.serial["message"] = "USB desconectado; placa publicando pelo Wi-Fi (MQTT)."
+            self._changed()
+            return True
 
     def _remember_state_loss(self, reason: str, message=None) -> None:
         if not any(value >= 0 for value in self.states):
@@ -255,6 +333,14 @@ class DashboardState:
                     and now - self.client_seen > CLIENT_TTL):
                 self._invalidate("Programa de aquisição sem resposta.")
                 changed = True
+            if (self.wifi["source"] and not self.serial["connected"] and self.wifi["seen"] is not None
+                    and now - self.wifi["seen"] > WIFI_TTL):
+                self._remember_state_loss("Placa sem mensagens pelo Wi-Fi.")
+                self.states, self.result = [-1, -1], None
+                self.wifi.update(source=False, online=False, message="Placa sem mensagens pelo Wi-Fi.")
+                self.serial["message"] = "USB desconectado e placa sem mensagens pelo Wi-Fi."
+                self._changed()
+                changed = True
             return changed
 
     def snapshot(self) -> dict[str, Any]:
@@ -269,6 +355,7 @@ class DashboardState:
                 "serial": self.serial, "mqtt": self.mqtt, "last_error": self.last_error,
                 "firmware": self.firmware, "pending_commands": len(self.commands),
                 "last_state_loss": self.last_state_loss,
+                "wifi": {k: v for k, v in self.wifi.items() if k != "seen"},
             })
 
     def set_mqtt(self, **fields: Any) -> None:
@@ -341,6 +428,7 @@ class DashboardState:
                 if not event["connected"]:
                     self._invalidate(event.get("message") or "USB desconectado.")
                 elif not was_connected:
+                    self.wifi["source"] = False
                     self.states = [-1, -1]
                     self.result = None
                     self.mode_confirmed = None
@@ -401,11 +489,18 @@ class DashboardState:
                     self.capture["phase"] = "monitorando"
                 if subtype == "resultado":
                     self.result = copy.deepcopy(message)
+                    note = saturation_note(message)
+                    if note:
+                        self.last_error = note
                 elif subtype in ("falha", "captura_cancelada"):
-                    self.last_error = str(message.get("motivo", "Captura interrompida."))[:300]
+                    reason = str(message.get("motivo", "Captura interrompida."))[:300]
+                    self.last_error = SATURATION_REASONS.get(reason, reason)
                     if subtype == "falha":
                         self.result = None
                         self.states = [-1, -1]
+                elif subtype == "aviso" and message.get("motivo") in SATURATION_REASONS:
+                    # Saturação persistente: sem classificação, mas os estados enviados pela placa valem.
+                    self.last_error = SATURATION_REASONS[message["motivo"]]
                 elif subtype == "aviso":
                     reasons = {"ocupado": "Aguarde a captura terminar antes de mudar o modo.",
                                "modo_incompativel": "Mude para aquisição antes de capturar.",
@@ -528,7 +623,20 @@ class EmbeddedBroker:
                 await self.stop_async.wait()
             finally:
                 if started:
-                    await broker.shutdown()
+                    # Fecha a porta de escuta antes de encerrar as sessões. Com assinantes
+                    # conectados (ex.: a placa pelo Wi-Fi), o shutdown do aMQTT 0.11 pode ser
+                    # cancelado no meio; a porta ficava aberta sem atender ninguém e um novo
+                    # broker na mesma porta falhava com "address already in use".
+                    for server in list(getattr(broker, "_servers", {}).values()):
+                        instance = getattr(server, "instance", None)
+                        if instance is not None:
+                            instance.close()
+                            if hasattr(instance, "close_clients"):  # Python 3.13+
+                                instance.close_clients()
+                    try:
+                        await asyncio.wait_for(broker.shutdown(), timeout=3)
+                    except (Exception, asyncio.CancelledError) as exc:
+                        LOG.warning("Encerramento do broker MQTT incompleto: %r", exc)
 
         def worker() -> None:
             try:
@@ -641,6 +749,8 @@ class MQTTService:
                                             if good else f"Conexao MQTT recusada: {reason}")
                 if good:
                     c.subscribe(self.topic + "/telemetria", qos=0)
+                    c.subscribe(self.topic + "/estado", qos=1)
+                    c.subscribe(self.topic + "/placa/status", qos=1)
                     c.publish(self.topic + "/status", json.dumps({"online": True,
                               "simulation": self.state.demo}), qos=1, retain=True)
                     self.publish_snapshot()
@@ -652,13 +762,16 @@ class MQTTService:
             def received(c, userdata, message):
                 try:
                     payload = json.loads(message.payload)
+                    suffix = message.topic[len(self.topic):] if message.topic.startswith(self.topic) else ""
+                    if self.state.accept_wifi(suffix, payload):
+                        return
                     if payload.get("protocolo") != self.state.contract["protocolo"]:
                         return
                     with self.state.lock:
                         self.state.mqtt["received"] += 1
                         self.state._changed()
-                except (ValueError, UnicodeError, AttributeError):
-                    pass
+                except (ValueError, UnicodeError, AttributeError) as exc:
+                    LOG.debug("Mensagem MQTT ignorada em %s: %s", getattr(message, "topic", "?"), exc)
 
             client.on_connect = connected
             client.on_disconnect = disconnected
@@ -707,6 +820,8 @@ class MQTTService:
         }
 
     def publish_snapshot(self) -> None:
+        if self.state.board_direct():
+            return  # a placa publica o próprio <base>/estado pelo Wi-Fi
         payload = self._snapshot_payload()
         fingerprint = json.dumps(payload, sort_keys=True, ensure_ascii=False)
         payload["recebido_em"] = time.time()
@@ -726,6 +841,8 @@ class MQTTService:
             # As 106 features pertencem ao CSV; não são despejadas no broker.
             if message["tipo"] == "entrada":
                 return
+            if message["tipo"] == "resultado" and self.state.board_direct():
+                return  # a placa já publicou este resultado pelo Wi-Fi
             if message["tipo"] == "resultado":
                 payload = dict(message, simulation=self.state.demo,
                                recebido_em=time.time(), transporte="usb_notebook")

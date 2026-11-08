@@ -1,4 +1,4 @@
-> **Revisão MQTT + Edge Impulse:** comece por [LEIA_PRIMEIRO_INTEGRACAO.md](LEIA_PRIMEIRO_INTEGRACAO.md). Esta cópia inclui reutilização do Mosquitto e um importador do SDK Arduino do Edge Impulse. A instalação e a compilação do novo firmware ainda estão pendentes; consulte [a validação desta revisão](docs/VALIDACAO.md).
+> **Versão dos ensaios finais (07/11/2026):** firmware `posicao_degrau_v6_20261107`, com MQTT direto pelo Wi-Fi e filtro de posição do degrau no teste contínuo; rede `eventos5_v1_p10_20261015`. Resultados de bancada em [docs/ENSAIOS_20261107.md](docs/ENSAIOS_20261107.md).
 
 # Monitor de equipamentos elétricos — TCC
 
@@ -14,6 +14,7 @@ osciloscopio/               Firmware e programa de diagnóstico preservados
 config/                    Configuração e identificação do modelo
 docs/                      Operação, protocolo e registro de validação
 testes_sistema/             Testes automáticos, sem placa conectada
+ensaios/                   Coletor e scripts de análise dos ensaios finais
 ```
 
 ## Começar no notebook
@@ -82,6 +83,8 @@ O programa sugere a próxima condição sem iniciar outra captura. Desmarque **S
 
 Selecione **Teste contínuo** e use **Informar estados iniciais**, informando o estado real de cada aparelho. O painel também permite essa confirmação. A rede identifica eventos; o firmware combina os eventos com o contexto para atualizar os estados. Após reiniciar a placa, informe os estados novamente. Na falta de comunicação, as telas mostram estados desconhecidos.
 
+No teste contínuo, uma previsão de evento só conta quando o degrau de corrente está nas janelas 11 a 17 do contexto de 5 s (`POSICAO_DEGRAU_MIN/MAX` em `config.h`). Isso evita que a passagem do degrau pelo contexto gere um evento falso do outro aparelho. A confirmação sai cerca de 1,6 s depois da ação. A aquisição guiada não usa esse filtro.
+
 ## Dados e modelo
 
 As capturas ficam por padrão em `Documents/TCC/capturas` do usuário do notebook. **Abrir pasta dos dados** mostra o local utilizado. A mesma pasta retoma a campanha; outra pasta cria uma campanha nova:
@@ -124,6 +127,17 @@ Tópico base: `tcc/eventos5/esp32_01`.
 | `/eventos` | Mudança de estado aceita pelo firmware |
 | `/estado` | Estado confirmado, modo e conexão USB; mensagem retida |
 | `/status` | Disponibilidade do publicador; mensagem retida e última vontade |
+| `/placa/status` | Disponibilidade da placa quando ela publica direto pelo Wi-Fi; retida e última vontade |
+
+### Placa sem o notebook (MQTT direto pelo Wi-Fi)
+
+A placa pode funcionar alimentada só por um carregador USB, publicando direto no broker:
+
+1. Copie `firmware/tcc_monitor/segredos_exemplo.h` para `segredos.h` na mesma pasta e preencha a rede Wi-Fi de 2,4 GHz, o endereço do broker (IP do notebook com o `servidor.py` ou outro broker da rede, porta 1883) e o tópico. O `segredos.h` está no `.gitignore`.
+2. Compile e grave o firmware pela Arduino IDE. Sem `segredos.h`, o firmware funciona como antes, só pela USB.
+3. A placa inicia em teste contínuo e publica em `/estado`, `/telemetria` e `/eventos` com `"transporte":"wifi_esp32"`. Os estados ficam desconhecidos até o primeiro evento de cada aparelho, como na USB. O botão continua trocando o modo.
+
+Com o `servidor.py` aberto, o painel mostra os estados que chegam pelo Wi-Fi quando a USB está desconectada. Com a USB conectada, a USB continua sendo a fonte do painel e o servidor deixa de republicar no MQTT o que a placa já publicou, para não duplicar. As capturas de treino (106 features) continuam exigindo a USB.
 
 Os dados das 106 features ficam nos CSVs. MQTT publica resultados e estados. A perda do servidor ou MQTT não impede salvar uma aquisição local. Ao reiniciar o servidor, a ponte volta a publicar o estado atual.
 

@@ -290,6 +290,9 @@ class CaptureStore:
                           origem_captura=capture.get("origem_captura", "não informada"))
             record["rotulo_edge_impulse"] = LABELS[scenario_info["neural_class"]]
             record["csv_edge_impulse"] = self.edge_impulse_path(record).relative_to(self.root).as_posix()
+            # Janelas com o ADC saturado, para filtrar capturas na análise (firmware que informa).
+            saturation = capture["resultado"].get("saturacao")
+            record["saturacao_adc"] = saturation if isinstance(saturation, dict) else None
             detail = self.root / "detalhes" / (unique + ".json")
             detail.parent.mkdir(exist_ok=True)
             atomic_json(detail, record)
@@ -469,16 +472,21 @@ def registrar_diagnostico_placa(message, previous=None):
             reasons.append("mudanca_estados")
     else:
         reasons.append("primeira_mensagem")
-    if message.get("tipo") in ("falha", "captura_cancelada"):
+    if message.get("tipo") in ("falha", "captura_cancelada") or (
+            message.get("tipo") == "aviso" and str(message.get("motivo", "")).startswith("saturacao_adc_")):
         if (message.get("tipo"), message.get("motivo")) != (previous.get("tipo"), previous.get("motivo")):
             reasons.append("falha_informada")
     if message.get("tipo") == "resultado" and message.get("classe_id") in (1, 2, 3, 4):
         reasons.append("previsao_transicao")
+    saturation = message.get("saturacao")
+    if message.get("tipo") == "resultado" and isinstance(saturation, dict) and (
+            saturation.get("janelas_i") or saturation.get("janelas_v")):
+        reasons.append("saturacao_adc")
     if reasons:
         keys = ("tipo", "motivo", "boot", "epoch", "uptime_ms", "estados", "classe",
                 "confianca", "margem", "decisao", "aceito", "alterados", "seq",
                 "frames_perdidos", "inferencias_descartadas", "vrms_adc", "irms_adc",
-                "diagnostico_entrada", "revisao_firmware")
+                "diagnostico_entrada", "saturacao", "revisao_firmware")
         record = dict(gatilhos=reasons, anterior={k: previous.get(k) for k in
                       ("tipo", "boot", "epoch", "estados")},
                       atual={k: message[k] for k in keys if k in message})
@@ -812,8 +820,15 @@ class Interface:
                     self.result.set("Resposta da rede: " + NETWORK_TITLES[m["classe_id"]])
                     if m["modo"] == "aquisicao":
                         self.action.set("SALVANDO")
+                    saturation = m.get("saturacao")
+                    if isinstance(saturation, dict) and integer(saturation.get("janelas_i"), 1, 25):
+                        self.status.set("Corrente saturou em %d janela(s), tolerado (ex.: partida do micro-ondas)."
+                                        % saturation["janelas_i"])
                 elif k in ("aviso", "falha", "captura_cancelada"):
-                    messages = {"cenario_nao_selecionado": "Selecione a classe antes de capturar.", "ocupado": "Aguarde a captura terminar ou cancele.", "captura_em_andamento": "Aguarde a captura terminar ou cancele.", "modo_incompativel": "Mude para aquisição antes de capturar.", "modo_teste": "Mude para aquisição antes de capturar."}
+                    messages = {"cenario_nao_selecionado": "Selecione a classe antes de capturar.", "ocupado": "Aguarde a captura terminar ou cancele.", "captura_em_andamento": "Aguarde a captura terminar ou cancele.", "modo_incompativel": "Mude para aquisição antes de capturar.", "modo_teste": "Mude para aquisição antes de capturar.",
+                                "saturacao_adc_corrente": "Corrente fora da faixa do ADC (firmware anterior). Grave o firmware corrigido.",
+                                "saturacao_adc_corrente_persistente": "Corrente acima da faixa do canal em várias janelas; sem classificação, estados mantidos.",
+                                "saturacao_adc_tensao_persistente": "Tensão acima da faixa do canal em várias janelas; sem classificação, estados mantidos."}
                     self.status.set(messages.get(m.get("motivo"), str(m.get("motivo", "Verifique a placa.")).replace("_", " ")))
         if not self.client.connected:
             self.mode.set("USB DESCONECTADO")
